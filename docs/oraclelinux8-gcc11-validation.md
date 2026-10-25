@@ -26,7 +26,7 @@ were verified.
 | Clean AlmaLinux 8 runtime | C/C++ programs, shared-library loading, and repaired wheel installation and isolated import passed without GCC Toolset or library-path overrides |
 | Original upstream `manylinux_2_28_x86_64` runtime | C/C++ programs, shared-library loading, and repaired wheel installation and isolated import passed with networking disabled and library-path overrides removed |
 | Complete upstream `docker/tests/run_tests.sh` | Exit 0: Oracle checks, all 17 interpreter configurations, development tools, and Clang helper tests; no exclusions or interpreter-count overrides |
-| Manual GitHub Actions workflow | Linted; not dispatched |
+| Manual GitHub Actions workflow | Passed on both native architectures; see the CI results below |
 
 The clean-runtime test used the official AlmaLinux 8.10 image with these
 distribution packages:
@@ -46,17 +46,33 @@ The upstream runtime check used
 glibc 2.28, and GCC 14.2.1. Wheel installation used `--no-index`;
 execution used neither `LD_LIBRARY_PATH` nor `PYTHONPATH` overrides.
 
+## Native x86_64 and aarch64 CI results
+
+[GitHub Actions run 40206696790](https://github.com/hansarnold/manylinux-oraclelinux8-gcc11/actions/runs/40206696790)
+validated commit
+[`60e702b`](https://github.com/hansarnold/manylinux-oraclelinux8-gcc11/commit/60e702ba6d07278fcbcbed1e15168b410d1b49f0)
+on native `ubuntu-24.04` and `ubuntu-24.04-arm` runners. Both jobs passed;
+the ARM job used native execution rather than CPU emulation.
+
+| Check | x86_64 | aarch64 |
+| --- | --- | --- |
+| Complete image build with pinned GCC/G++/GFortran 11.5.0 | Passed | Passed |
+| Default compiler target | `x86-64` | `armv8-a`, generic CPU/tuning |
+| Complete upstream suite, all 17 interpreter configurations, and Oracle ABI tests | Passed | Passed |
+| Maximum C++ probe and wheel symbol requirements | GLIBC 2.17, GLIBCXX 3.4.21, CXXABI 1.3.9 | GLIBC 2.17, GLIBCXX 3.4.21, CXXABI 1.3.9 |
+| Repaired C++ wheel and native probes in clean AlmaLinux 8 | Passed | Passed |
+| Repaired C++ wheel and native probes in original upstream manylinux_2_28 | Passed | Passed |
+
+The repaired wheels retain the standard `manylinux_2_28_x86_64` and
+`manylinux_2_28_aarch64` tags. Both architectures use the same pinned Oracle
+GCC 11.5 release, with `libquadmath-devel` omitted on aarch64. The runtime
+checks remove library-path overrides and use isolated Python imports.
+
 ## Scope and limitations
 
-The aarch64 configuration and native ARM64 CI job were added subsequently.
-Their full image build, upstream suite, ABI checks, and clean-runtime test
-are pending execution; the x86_64 results above do not establish ARM64
-compatibility. Both architectures retain the standard `manylinux_2_28`
-policy and Oracle GCC 11.5 package pins, with `libquadmath-devel` omitted on
-aarch64.
-
-Default x86_64 compiler targets and ELF requirements were checked, but no
-physical baseline-era x86_64 CPU was used. The C++ extension
+Default compiler targets and ELF requirements were checked on both
+architectures, but physical baseline-era x86_64 and ARMv8-A hardware were
+not used. The C++ extension
 probe covers CPython 3.9; upstream's extension-wheel tests cover all 17
 interpreter configurations. Actual downstream wheels still require their
 own auditwheel validation and runtime tests.

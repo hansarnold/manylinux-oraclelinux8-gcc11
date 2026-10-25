@@ -233,9 +233,9 @@ for each architecture, avoid `-march=native`, and test representative
 downstream wheels on suitable baseline hardware when extending this
 configuration.
 
-The [initial validation record](oraclelinux8-gcc11-validation.md) records the
-completed build, full upstream suite, clean AlmaLinux wheel test, and
-remaining validation limits.
+The [validation record](oraclelinux8-gcc11-validation.md) records the
+completed native x86_64 and aarch64 builds, full upstream suites, clean
+AlmaLinux wheel tests, upstream runtime checks, and remaining validation limits.
 
 ## Maintenance
 
