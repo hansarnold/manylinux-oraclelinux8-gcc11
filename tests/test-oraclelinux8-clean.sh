@@ -5,6 +5,12 @@ set -euo pipefail
 IMAGE=${1:-manylinux_2_28_oraclelinux8_gcc11_x86_64:local}
 CONTAINER_ENGINE=${CONTAINER_ENGINE:-docker}
 CLEAN_IMAGE=${ORACLELINUX_CLEAN_IMAGE:-docker.io/library/almalinux:8}
+IMAGE_ARCH=$("${CONTAINER_ENGINE}" image inspect --format '{{.Architecture}}' "${IMAGE}")
+case "${IMAGE_ARCH}" in
+	amd64) ARCH=x86_64; CONTAINER_PLATFORM=linux/amd64;;
+	arm64) ARCH=aarch64; CONTAINER_PLATFORM=linux/arm64;;
+	*) echo "Unsupported Oracle image architecture: ${IMAGE_ARCH}" >&2; exit 1;;
+esac
 
 # Keep exported artifacts in the invoking workdir, with no stale wheels from a
 # previous run. The image test writes logs and binaries into this directory.
@@ -13,15 +19,16 @@ OUTPUT_ROOT=$(cd output/oraclelinux8-gcc11-clean && pwd)
 ARTIFACTS=$(mktemp -d "${OUTPUT_ROOT}/run.XXXXXXXX")
 echo "Clean-container test artifacts: ${ARTIFACTS}"
 
-"${CONTAINER_ENGINE}" run --rm --platform linux/amd64 \
+"${CONTAINER_ENGINE}" run --rm --platform "${CONTAINER_PLATFORM}" \
 	-v "${ARTIFACTS}:/artifacts:Z" \
 	-e ORACLELINUX_TEST_OUTPUT=/artifacts \
 	"${IMAGE}" /opt/_internal/tests/oraclelinux8-gcc11.sh
 
 # Variables in the command body must expand inside the clean container.
 # shellcheck disable=SC2016
-"${CONTAINER_ENGINE}" run --rm --platform linux/amd64 \
+"${CONTAINER_ENGINE}" run --rm --platform "${CONTAINER_PLATFORM}" \
 	-v "${ARTIFACTS}:/artifacts:ro,Z" \
+	-e ORACLELINUX_TEST_ARCH="${ARCH}" \
 	"${CLEAN_IMAGE}" /bin/bash -euxo pipefail -c '
 	source /etc/os-release
 	case "${ID}" in almalinux|rocky) ;; *) exit 1;; esac
@@ -43,7 +50,7 @@ echo "Clean-container test artifacts: ${ARTIFACTS}"
 	unset LD_LIBRARY_PATH PYTHONPATH
 	/artifacts/programs/c-smoke
 	/artifacts/programs/cxx-smoke
-	"${PYTHON}" -m pip install --no-index --no-deps /artifacts/wheelhouse/*-cp39-cp39-manylinux_2_28_x86_64.whl
+	"${PYTHON}" -m pip install --no-index --no-deps /artifacts/wheelhouse/*-cp39-cp39-manylinux_2_28_${ORACLELINUX_TEST_ARCH}.whl
 	"${PYTHON}" -I -c "import oraclelinux_cpp_smoke; assert oraclelinux_cpp_smoke.answer() == 42"
 	"${PYTHON}" -I -c "import ctypes; lib = ctypes.CDLL(\"/artifacts/programs/liboraclelinux_smoke.so\"); assert lib.oraclelinux_answer() == 42"
 	'

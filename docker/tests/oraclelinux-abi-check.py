@@ -4,10 +4,10 @@ Run with auditwheel's own Python (which provides auditwheel and pyelftools).
 This complements auditwheel repair: it also checks the standalone C/C++ probes.
 """
 
+import argparse
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import auditwheel
@@ -17,18 +17,23 @@ POLICY_PATH = Path(auditwheel.__file__).parent / "policy" / "manylinux-policy.js
 POLICY = next(
     policy for policy in json.loads(POLICY_PATH.read_text()) if policy["name"] == "manylinux_2_28"
 )
-ALLOWED_VERSIONS = {
-    f"{namespace}_{version}"
-    for namespace, versions in POLICY["symbol_versions"]["x86_64"].items()
-    for version in versions
+ARCHITECTURES = {
+    "x86_64": ("EM_X86_64", "ld-linux-x86-64.so.2"),
+    "aarch64": ("EM_AARCH64", "ld-linux-aarch64.so.1"),
 }
 
 
-def check_elf(path):
+def check_elf(path, arch):
+    machine, loader = ARCHITECTURES[arch]
+    allowed_versions = {
+        f"{namespace}_{version}"
+        for namespace, versions in POLICY["symbol_versions"][arch].items()
+        for version in versions
+    }
     with path.open("rb") as stream:
         elf = ELFFile(stream)
-        if elf.elfclass != 64 or elf.header["e_machine"] != "EM_X86_64":
-            msg = f"{path}: expected an x86_64 ELF"
+        if elf.elfclass != 64 or not elf.little_endian or elf.header["e_machine"] != machine:
+            msg = f"{path}: expected an {arch} ELF (64-bit little-endian)"
             raise RuntimeError(msg)
         dynamic = elf.get_section_by_name(".dynamic")
         if dynamic is None:
@@ -42,7 +47,7 @@ def check_elf(path):
                 msg = f"{path}: unexpected embedded library search path"
                 raise RuntimeError(msg)
         # auditwheel also exempts the architecture's ELF interpreter.
-        forbidden = needed - set(POLICY["lib_whitelist"]) - {"ld-linux-x86-64.so.2"}
+        forbidden = needed - set(POLICY["lib_whitelist"]) - {loader}
         if forbidden:
             msg = f"{path}: unexpected runtime dependencies: {forbidden}"
             raise RuntimeError(msg)
@@ -52,7 +57,7 @@ def check_elf(path):
         if version_section is not None:
             for _, auxiliary in version_section.iter_versions():
                 requirements.update(version.name for version in auxiliary)
-        forbidden = requirements - ALLOWED_VERSIONS
+        forbidden = requirements - allowed_versions
         if forbidden:
             msg = f"{path}: symbols outside manylinux_2_28: {forbidden}"
             raise RuntimeError(msg)
@@ -68,16 +73,18 @@ def check_elf(path):
                 raise RuntimeError(msg)
 
     notes = subprocess.check_output(["readelf", "--notes", str(path)], text=True)
-    for isa in re.findall(r"x86 ISA needed:\s*([^\n]+)", notes):
-        if isa.strip() != "x86-64-baseline":
-            msg = f"{path}: non-baseline x86 ISA requirement: {isa}"
-            raise RuntimeError(msg)
+    if arch == "x86_64":
+        for isa in re.findall(r"x86 ISA needed:\s*([^\n]+)", notes):
+            if isa.strip() != "x86-64-baseline":
+                msg = f"{path}: non-baseline x86 ISA requirement: {isa}"
+                raise RuntimeError(msg)
     print(f"{path}: needed={sorted(needed)}, versions={sorted(requirements)}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        msg = "usage: oraclelinux-abi-check.py ELF [ELF ...]"
-        raise SystemExit(msg)
-    for filename in sys.argv[1:]:
-        check_elf(Path(filename))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--arch", choices=ARCHITECTURES, default="x86_64")
+    parser.add_argument("elf", nargs="+", type=Path)
+    args = parser.parse_args()
+    for filename in args.elf:
+        check_elf(filename, args.arch)

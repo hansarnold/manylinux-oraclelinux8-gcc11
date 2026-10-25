@@ -1,14 +1,16 @@
 # Oracle Linux 8 with GCC 11.5
 
 This fork adds `MANYLINUX_VARIANT=oraclelinux8-gcc11` to the upstream build
-workflow. It supports **`POLICY=manylinux_2_28`, `PLATFORM=x86_64` only** and
-uses the official `oraclelinux:8` image. Leaving `MANYLINUX_VARIANT` unset
+workflow. It supports **`POLICY=manylinux_2_28` with `PLATFORM=x86_64` or
+`PLATFORM=aarch64`** and uses the official `oraclelinux:8` image.
+Leaving `MANYLINUX_VARIANT` unset
 preserves the upstream image selection.
 The build uses its fully qualified name `docker.io/library/oraclelinux:8`
 so Podman's short-name aliases cannot select a different registry.
 
 The Docker image name distinguishes this fork's toolchain. Wheel tags remain
-`manylinux_2_28_x86_64`: Oracle Linux is not a new wheel policy. Under
+`manylinux_2_28_x86_64` and `manylinux_2_28_aarch64`: Oracle Linux is not a new
+wheel policy. Under
 [PEP 600](https://peps.python.org/pep-0600/), compatibility is a promise about
 the resulting wheel's runtime requirements. Building on EL8 is necessary for
 this configuration, but each wheel still needs ABI inspection and repair.
@@ -23,16 +25,29 @@ MANYLINUX_VARIANT=oraclelinux8-gcc11 COMMIT_SHA=local \
 ./build.sh
 ```
 
-The resulting local image is
-`manylinux_2_28_oraclelinux8_gcc11_x86_64:local`. `build.sh` builds the existing
+For ARM64, use the same workflow with `PLATFORM=aarch64`:
+
+```bash
+POLICY=manylinux_2_28 PLATFORM=aarch64 \
+MANYLINUX_VARIANT=oraclelinux8-gcc11 COMMIT_SHA=local \
+./build.sh
+```
+
+| `PLATFORM` | Container platform | Local image |
+| --- | --- | --- |
+| `x86_64` | `linux/amd64` | `manylinux_2_28_oraclelinux8_gcc11_x86_64:local` |
+| `aarch64` | `linux/arm64` | `manylinux_2_28_oraclelinux8_gcc11_aarch64:local` |
+
+`build.sh` builds the existing
 multi-stage `docker/Dockerfile` and runs the complete upstream
 `docker/tests/run_tests.sh`, including the additional Oracle checks. It does
 not push an image. Set `MANYLINUX_IMAGE` to choose another full image name/tag.
 Use `MANYLINUX_BUILD_FRONTEND=docker` or `podman` to select the existing
 alternative frontends.
 
-For native x86_64 Podman, also set `MANYLINUX_BUILDARCH=amd64`; some Podman
-versions do not support upstream's Docker-style architecture detection:
+For native Podman builds, set `MANYLINUX_BUILDARCH=amd64` on x86_64 or
+`MANYLINUX_BUILDARCH=arm64` on ARM64; some Podman versions do not support
+upstream's Docker-style architecture detection. For example:
 
 ```bash
 POLICY=manylinux_2_28 PLATFORM=x86_64 \
@@ -50,8 +65,9 @@ MANYLINUX_VARIANT=oraclelinux8-gcc11 COMMIT_SHA=local \
 MANYLINUX_BUILD_FRONTEND=docker ./build.sh
 ```
 
-A native x86_64 Linux builder is recommended for the full interpreter build.
-Other hosts need working Linux/amd64 emulation and substantially more time.
+A native Linux builder matching the target architecture is recommended for
+the full interpreter build. Building for another architecture requires
+working container emulation and substantially more time.
 The image retains all upstream Python interpreters under `/opt/python`,
 the interpreter installer, pip, build, auditwheel, CMake, patchelf, and the
 other upstream development tools. No interpreter stages or upstream tests
@@ -70,14 +86,16 @@ docker run --rm --platform linux/amd64 \
     /opt/python/cp312-cp312/bin/python -m build --wheel --outdir /io/output/wheels
     for wheel in /io/output/wheels/*.whl; do
       auditwheel show "$wheel"
-      auditwheel repair --plat manylinux_2_28_x86_64 --only-plat \
+      auditwheel repair --plat "${AUDITWHEEL_PLAT}" --only-plat \
         --wheel-dir /io/output/repaired "$wheel"
     done
   '
 ```
 
 Choose the `/opt/python/<python tag>-<abi tag>` interpreter required by your
-project. Keep each build's output directory free of unrelated wheels.
+project. For ARM64, use `--platform linux/arm64` and the `aarch64` image;
+`AUDITWHEEL_PLAT` selects that image's standard wheel tag. Keep each build's
+output directory free of unrelated wheels.
 `auditwheel repair` can bundle eligible non-policy libraries; it cannot make
 an incompatible glibc or libstdc++ requirement compatible merely by changing
 the filename. Do not force a tag onto a wheel that fails validation.
@@ -90,20 +108,26 @@ packages including `yasm` and `uuid-devel`; `ol8_developer_EPEL` is not needed.
 AlmaLinux, CentOS, RHEL, and third-party GCC repositories are not added.
 RPM signature checking remains enabled.
 
-The initial x86_64 package selection was checked against the
-[Oracle AppStream index](https://yum.oracle.com/repo/OracleLinux/OL8/appstream/x86_64/),
+The pinned packages are published in Oracle AppStream for
+[x86_64](https://yum.oracle.com/repo/OracleLinux/OL8/appstream/x86_64/) and
+[aarch64](https://yum.oracle.com/repo/OracleLinux/OL8/appstream/aarch64/).
+The initial selection was checked against these repositories, the
 [CodeReady Builder index](https://yum.oracle.com/repo/OracleLinux/OL8/codeready/builder/x86_64/),
 and [Oracle's GCC 11.5 errata](https://linux.oracle.com/errata/ELBA-2024-12848.html):
 
 | Package family | Version-release |
 | --- | --- |
 | `gcc-toolset-11-gcc`, `gcc-c++`, `gcc-gfortran` | `11.5.0-2.0.1.el8_6` |
-| `gcc-toolset-11-libstdc++-devel`, `libatomic-devel`, `libquadmath-devel` | `11.5.0-2.0.1.el8_6` |
+| `gcc-toolset-11-libstdc++-devel`, `libatomic-devel` | `11.5.0-2.0.1.el8_6` |
+| `gcc-toolset-11-libquadmath-devel` (x86_64 only) | `11.5.0-2.0.1.el8_6` |
 | `gcc-toolset-11-binutils` | `2.36.1-4.0.2.el8_6` |
 | `gcc-toolset-11-runtime` | `11.1-1.el8` |
 
 Names after the first entry in each grouped row share the `gcc-toolset-11-`
-prefix. The toolset's `runtime` RPM describes the software collection; its
+prefix. Both architectures use the same version-release pins. Oracle does
+not provide `gcc-toolset-11-libquadmath-devel` for aarch64; the ARM64
+configuration omits that x86_64 dependency. The toolset's `runtime` RPM
+describes the software collection; its
 `11.1` version does not indicate the installed compiler version. The selected
 compiler must report exactly `11.5.0`; there is no fallback to GCC 11.2, GCC 14,
 or the system GCC 8.
@@ -116,13 +140,18 @@ commands `gcc`, `g++`, and `gfortran` are available without running
 
 ## libstdc++ and runtime compatibility
 
-Oracle's GCC 11.5 `gcc-c++` RPM supplies a text linker script, rather than a
-new replacement shared libstdc++, at the compiler's `libstdc++.so` path:
+Oracle's GCC 11.5 toolchain supplies a text linker script, rather than a
+new replacement shared libstdc++, at the compiler's `libstdc++.so` path.
+The script belongs to `gcc-toolset-11-gcc-c++` on x86_64 and
+`gcc-toolset-11-libstdc++-devel` on aarch64. On x86_64 it contains:
 
 ```text
 OUTPUT_FORMAT(elf64-x86-64)
 INPUT ( /usr/lib64/libstdc++.so.6 -lstdc++_nonshared )
 ```
+
+The aarch64 script uses `OUTPUT_FORMAT(elf64-littleaarch64)` with the same
+`INPUT` line.
 
 The matching `gcc-toolset-11-libstdc++-devel` RPM supplies
 `libstdc++_nonshared.a`. This links selected newer implementation code from
@@ -135,12 +164,13 @@ This mechanism is not a blanket ABI guarantee: the selected archive members
 may introduce additional symbol requirements. The tests compile C++17
 filesystem and exception code, inspect ELF dependencies and versioned
 symbols, and build and repair a real extension wheel against the installed
-auditwheel `manylinux_2_28_x86_64` policy. The clean-runtime test checks the
-result without `LD_LIBRARY_PATH` or a GCC Toolset installation.
+auditwheel `manylinux_2_28` policy for the target architecture. The
+clean-runtime test checks the result without `LD_LIBRARY_PATH` or a GCC
+Toolset installation.
 
 GFortran also uses a nonshared linker script with the base system's
-`libgfortran.so.5`. Toolset development linker scripts for libatomic and
-libquadmath target the corresponding base system shared libraries.
+`libgfortran.so.5`. Toolset development linker scripts for libatomic, and
+libquadmath on x86_64, target the corresponding base system shared libraries.
 Compiler runtimes outside auditwheel's allowlist must be bundled where
 permitted. Downstream projects using Fortran, OpenMP, or other runtimes
 must run auditwheel on their own wheels as well.
@@ -168,12 +198,28 @@ The runtime has no GCC Toolset packages. Its virtual environment uses pip
 25.3 for PEP 600 support and isolates the installed wheel from the build
 environment. Set `ORACLELINUX_CLEAN_IMAGE=docker.io/library/rockylinux:8`
 to repeat with Rocky Linux, or `CONTAINER_ENGINE=podman` to use Podman for
-this helper.
+this helper. The helper selects the target architecture from the local
+image metadata; pass the `aarch64` image name to test ARM64.
+
+An additional runtime check uses the corresponding official upstream
+`quay.io/pypa/manylinux_2_28_<architecture>:latest` image:
+
+```bash
+./tests/test-oraclelinux8-upstream.sh \
+  manylinux_2_28_oraclelinux8_gcc11_x86_64:local
+```
+
+This checks the repaired wheel and native probes with library-path overrides
+removed, so the upstream image's own compiler toolset cannot mask a runtime
+dependency.
 
 The manual **Oracle Linux 8 GCC 11.5** GitHub Actions workflow invokes the
-same build and clean-runtime tests on an x86_64 runner. It has no registry
+same build and clean-runtime tests on native `ubuntu-24.04` (x86_64) and
+`ubuntu-24.04-arm` (aarch64) runners. It has no registry
 login, push step, or package-write permission. Image publication is a
 separate maintainer action and must use a registry namespace you control.
+Enable the `test_upstream_runtime` dispatch input to include the optional
+upstream-image runtime check for both architectures.
 The upstream image-matrix and dependency-update jobs are gated to
 `pypa/manylinux`; they do not run for this fork. Repository lint checks
 remain available independently of the manual Oracle image build.
@@ -182,9 +228,10 @@ The upstream test suite still validates its entire supported interpreter
 matrix, including optional interpreters installed by `ensure-all`. The
 additional C++ wheel probe uses CPython 3.9 to match a clean EL8 distribution
 interpreter. Symbol checks and ordinary execution do not prove every code
-path is safe on every old CPU: retain the baseline `x86-64` compiler target,
-avoid `-march=native`, and test representative downstream wheels on suitable
-baseline hardware when extending this configuration.
+path is safe on every supported CPU. Retain the baseline compiler target
+for each architecture, avoid `-march=native`, and test representative
+downstream wheels on suitable baseline hardware when extending this
+configuration.
 
 The [initial validation record](oraclelinux8-gcc11-validation.md) records the
 completed build, full upstream suite, clean AlmaLinux wheel test, and

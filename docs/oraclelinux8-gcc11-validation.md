@@ -1,13 +1,13 @@
 # Oracle Linux 8 / GCC 11.5 validation — 2026-10-25
 
-This record covers the initial Oracle variant implementation on upstream
+This record covers the initial x86_64 Oracle variant implementation on upstream
 manylinux commit
 [`c6afd89b132ea698ee88ce8f0bb6a13a6c5761c4`](https://github.com/pypa/manylinux/commit/c6afd89b132ea698ee88ce8f0bb6a13a6c5761c4).
 The complete image was built and tested on native x86_64 Linux using
 Podman 5.8.9. The [build and maintenance guide](oraclelinux8-gcc11.md)
 documents the commands and pinned Oracle RPM versions.
 
-## Results
+## x86_64 results
 
 The resulting image uses Oracle Linux 8, glibc 2.28, and GCC/G++/GFortran
 11.5.0. Its toolchain paths and `manylinux_2_28_x86_64` policy environment
@@ -24,6 +24,7 @@ were verified.
 | Native probe ELF dependencies and symbol versions | Passed; maximum requirements were GLIBC 2.17, GLIBCXX 3.4.21, and CXXABI 1.3.9 |
 | Real CPython 3.9 C++ extension wheel | `auditwheel show`, repair for `manylinux_2_28_x86_64`, installation, and import passed |
 | Clean AlmaLinux 8 runtime | C/C++ programs, shared-library loading, and repaired wheel installation and isolated import passed without GCC Toolset or library-path overrides |
+| Original upstream `manylinux_2_28_x86_64` runtime | C/C++ programs, shared-library loading, and repaired wheel installation and isolated import passed with networking disabled and library-path overrides removed |
 | Complete upstream `docker/tests/run_tests.sh` | Exit 0: Oracle checks, all 17 interpreter configurations, development tools, and Clang helper tests; no exclusions or interpreter-count overrides |
 | Manual GitHub Actions workflow | Linted; not dispatched |
 
@@ -40,10 +41,22 @@ The wheel was installed in a virtual environment created by the
 distribution's Python 3.9 and imported with `-I`. Source checksums, RPM
 signature checks, and ABI validation remained enabled throughout testing.
 
+The upstream runtime check used
+`quay.io/pypa/manylinux_2_28_x86_64:latest`, reporting AlmaLinux 8.10,
+glibc 2.28, and GCC 14.2.1. Wheel installation used `--no-index`;
+execution used neither `LD_LIBRARY_PATH` nor `PYTHONPATH` overrides.
+
 ## Scope and limitations
 
-Only x86_64 is supported. Default compiler targets and ELF requirements were
-checked, but no physical baseline-era x86_64 CPU was used. The C++ extension
+The aarch64 configuration and native ARM64 CI job were added subsequently.
+Their full image build, upstream suite, ABI checks, and clean-runtime test
+are pending execution; the x86_64 results above do not establish ARM64
+compatibility. Both architectures retain the standard `manylinux_2_28`
+policy and Oracle GCC 11.5 package pins, with `libquadmath-devel` omitted on
+aarch64.
+
+Default x86_64 compiler targets and ELF requirements were checked, but no
+physical baseline-era x86_64 CPU was used. The C++ extension
 probe covers CPython 3.9; upstream's extension-wheel tests cover all 17
 interpreter configurations. Actual downstream wheels still require their
 own auditwheel validation and runtime tests.

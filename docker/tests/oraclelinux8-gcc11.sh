@@ -15,8 +15,14 @@ test "${ID}" = ol
 test "${VERSION_ID%%.*}" = 8
 test "${MANYLINUX_VARIANT}" = oraclelinux8-gcc11
 test "${AUDITWHEEL_POLICY}" = manylinux_2_28
-test "${AUDITWHEEL_ARCH}" = x86_64
-test "${AUDITWHEEL_PLAT}" = manylinux_2_28_x86_64
+ARCH=${AUDITWHEEL_ARCH}
+case "${ARCH}" in
+	x86_64) EXPECTED_MARCH=x86-64;;
+	aarch64) EXPECTED_MARCH=armv8-a;;
+	*) echo "Unsupported Oracle test architecture: ${ARCH}" >&2; exit 1;;
+esac
+WHEEL_PLATFORM=manylinux_2_28_${ARCH}
+test "${AUDITWHEEL_PLAT}" = "${WHEEL_PLATFORM}"
 test "${DEVTOOLSET_ROOTPATH}" = "${ROOT}"
 test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.28'
 ldd --version | tee "${OUT}/reports/ldd-version.txt"
@@ -30,8 +36,24 @@ for COMPILER in gcc g++ gfortran; do
 		*) echo "${COMPILER} did not resolve to GCC Toolset 11"; exit 1;;
 	esac
 	# Test default code generation, without masking it with our own -march.
-	test "$("${COMPILER}" -Q --help=target | awk '$1 == "-march=" {print $2}')" = x86-64
+	TARGET_OPTIONS=$("${COMPILER}" -Q --help=target)
+	test "$(awk '$1 == "-march=" {print $2}' <<< "${TARGET_OPTIONS}")" = "${EXPECTED_MARCH}"
+	if [ "${ARCH}" == aarch64 ]; then
+		test "$(awk '$1 == "-mcpu=" {print $2}' <<< "${TARGET_OPTIONS}")" = generic
+		test "$(awk '$1 == "-mtune=" {print $2}' <<< "${TARGET_OPTIONS}")" = generic
+	fi
 done
+if [ "${ARCH}" == aarch64 ]; then
+	for COMPILER in gcc g++; do
+		SOURCE_LANGUAGE=c
+		if [ "${COMPILER}" == g++ ]; then SOURCE_LANGUAGE=c++; fi
+		"${COMPILER}" -dM -E -x "${SOURCE_LANGUAGE}" /dev/null > "${OUT}/reports/${COMPILER}-macros.txt"
+		if grep -E '^#define __ARM_FEATURE_(ATOMICS|SVE)' "${OUT}/reports/${COMPILER}-macros.txt"; then
+			echo "Compiler enables instructions beyond the ARMv8-A baseline" >&2
+			exit 1
+		fi
+	done
+fi
 for TOOL in ld as ar nm readelf objdump; do
 	case "$(readlink -f "$(command -v "${TOOL}")")" in
 		"${ROOT}"/usr/bin/*) ;;
@@ -74,11 +96,11 @@ PYTHON=/opt/python/cp39-cp39/bin/python
 test -x "${PYTHON}"
 cp -r "${MY_DIR}/oraclelinux-cpp" "${WORK}/source"
 CC=gcc CXX=g++ "${PYTHON}" -m build --wheel --outdir "${WORK}/dist" "${WORK}/source"
-WHEEL=${WORK}/dist/oraclelinux_cpp_smoke-0.1.0-cp39-cp39-linux_x86_64.whl
+WHEEL=${WORK}/dist/oraclelinux_cpp_smoke-0.1.0-cp39-cp39-linux_${ARCH}.whl
 test -f "${WHEEL}"
 auditwheel show "${WHEEL}" | tee "${OUT}/reports/auditwheel-before.txt"
-auditwheel repair --plat manylinux_2_28_x86_64 --only-plat -w "${WORK}/repaired" "${WHEEL}"
-REPAIRED=${WORK}/repaired/oraclelinux_cpp_smoke-0.1.0-cp39-cp39-manylinux_2_28_x86_64.whl
+auditwheel repair --plat "${WHEEL_PLATFORM}" --only-plat -w "${WORK}/repaired" "${WHEEL}"
+REPAIRED=${WORK}/repaired/oraclelinux_cpp_smoke-0.1.0-cp39-cp39-${WHEEL_PLATFORM}.whl
 test -f "${REPAIRED}"
 auditwheel show "${REPAIRED}" | tee "${OUT}/reports/auditwheel-after.txt"
 "${PYTHON}" -m zipfile -e "${REPAIRED}" "${WORK}/unpacked"
@@ -95,7 +117,7 @@ for ELF in "${ELFS[@]}"; do
 	readelf -h -d -V -n "${ELF}"
 	objdump -p -T "${ELF}"
 done > "${OUT}/reports/elf.txt"
-"${AUDITWHEEL_PYTHON}" "${MY_DIR}/oraclelinux-abi-check.py" "${ELFS[@]}" | tee "${OUT}/reports/abi-policy.txt"
+"${AUDITWHEEL_PYTHON}" "${MY_DIR}/oraclelinux-abi-check.py" --arch "${ARCH}" "${ELFS[@]}" | tee "${OUT}/reports/abi-policy.txt"
 
 "${PYTHON}" -m venv "${WORK}/venv"
 "${WORK}/venv/bin/python" -m pip install --no-index "${REPAIRED}"

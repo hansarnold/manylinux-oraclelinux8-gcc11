@@ -1,6 +1,6 @@
 """Exercise the ABI checker with real linked ELF files, including bad inputs.
 
-Run with auditwheel's Python on x86_64 Linux. The fixtures never execute: small
+Run with auditwheel's Python on x86_64 or aarch64 Linux. The fixtures never execute: small
 versioned provider libraries let us test an ABI newer than the build host.
 """
 
@@ -12,10 +12,12 @@ import unittest
 from pathlib import Path
 
 CHECKER = Path(__file__).with_name("oraclelinux-abi-check.py")
+ARCH = platform.machine()
 
 
 @unittest.skipUnless(
-    sys.platform == "linux" and platform.machine() == "x86_64", "requires x86_64 Linux"
+    sys.platform == "linux" and ARCH in {"x86_64", "aarch64"},
+    "requires x86_64 or aarch64 Linux",
 )
 class AbiCheckerTests(unittest.TestCase):
     def setUp(self):
@@ -56,7 +58,7 @@ class AbiCheckerTests(unittest.TestCase):
 
     def check(self, binary):
         return subprocess.run(
-            [sys.executable, str(CHECKER), str(binary)],
+            [sys.executable, str(CHECKER), "--arch", ARCH, str(binary)],
             capture_output=True,
             text=True,
             check=False,
@@ -89,11 +91,13 @@ class AbiCheckerTests(unittest.TestCase):
     def test_rejects_wrong_architecture(self):
         binary = self.fixture()
         data = bytearray(binary.read_bytes())
-        data[18:20] = (183).to_bytes(2, "little")  # ELF e_machine = EM_AARCH64
+        # Corrupt ELF e_machine to the other supported architecture.
+        wrong_machine = 183 if ARCH == "x86_64" else 62
+        data[18:20] = wrong_machine.to_bytes(2, "little")
         binary.write_bytes(data)
         result = self.check(binary)
         assert result.returncode != 0
-        assert "expected an x86_64 ELF" in result.stderr
+        assert f"expected an {ARCH} ELF" in result.stderr
 
 
 if __name__ == "__main__":

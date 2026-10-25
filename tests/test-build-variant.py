@@ -52,17 +52,27 @@ class BuildVariantTests(unittest.TestCase):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
 
     def test_oracle_configuration_and_tests(self):
-        result = self.run_build(MANYLINUX_VARIANT="oraclelinux8-gcc11")
-        assert result.returncode == 0, result.stderr
-        build, test = self.calls()
-        assert build["env"]["BASEIMAGE"] == "docker.io/library/oraclelinux:8"
-        root = "/opt/rh/gcc-toolset-11/root"
-        assert build["env"]["DEVTOOLSET_ROOTPATH"] == root
-        assert build["env"]["PREPEND_PATH"] == f"{root}/usr/bin:"
-        assert f"{root}/usr/lib64" in build["env"]["LD_LIBRARY_PATH_ARG"]
-        assert "manylinux_2_28_oraclelinux8_gcc11_x86_64:test" in build["args"]
-        assert test["args"][-1] == "/opt/_internal/tests/run_tests.sh"
-        assert "--platform=linux/amd64" in test["args"]
+        for platform, goarch in (("x86_64", "amd64"), ("aarch64", "arm64")):
+            with self.subTest(platform=platform):
+                self.log.unlink(missing_ok=True)
+                result = self.run_build(
+                    MANYLINUX_VARIANT="oraclelinux8-gcc11",
+                    PLATFORM=platform,
+                    MANYLINUX_BUILDARCH=goarch,
+                )
+                assert result.returncode == 0, result.stderr
+                build, test = self.calls()
+                assert build["env"]["BASEIMAGE"] == "docker.io/library/oraclelinux:8"
+                root = "/opt/rh/gcc-toolset-11/root"
+                assert build["env"]["DEVTOOLSET_ROOTPATH"] == root
+                assert build["env"]["PREPEND_PATH"] == f"{root}/usr/bin:"
+                assert f"{root}/usr/lib64" in build["env"]["LD_LIBRARY_PATH_ARG"]
+                image = f"manylinux_2_28_oraclelinux8_gcc11_{platform}:test"
+                assert image in build["args"]
+                assert image in test["args"]
+                assert f"--platform=linux/{goarch}" in build["args"]
+                assert f"--platform=linux/{goarch}" in test["args"]
+                assert test["args"][-1] == "/opt/_internal/tests/run_tests.sh"
 
     def test_upstream_default_is_unchanged(self):
         result = self.run_build()
@@ -75,7 +85,7 @@ class BuildVariantTests(unittest.TestCase):
     def test_unsupported_combinations_fail_before_docker(self):
         for overrides in (
             {"MANYLINUX_VARIANT": "typo"},
-            {"MANYLINUX_VARIANT": "oraclelinux8-gcc11", "PLATFORM": "aarch64"},
+            {"MANYLINUX_VARIANT": "oraclelinux8-gcc11", "PLATFORM": "ppc64le"},
             {"MANYLINUX_VARIANT": "oraclelinux8-gcc11", "POLICY": "manylinux_2_34"},
         ):
             with self.subTest(overrides=overrides):

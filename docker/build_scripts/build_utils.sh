@@ -4,10 +4,10 @@
 case "${MANYLINUX_VARIANT:-}" in
 	"") ;;
 	oraclelinux8-gcc11)
-		if [ "${AUDITWHEEL_POLICY}_${AUDITWHEEL_ARCH}" != "manylinux_2_28_x86_64" ]; then
-			echo "oraclelinux8-gcc11 requires manylinux_2_28_x86_64" >&2
-			exit 1
-		fi
+		case "${AUDITWHEEL_POLICY}_${AUDITWHEEL_ARCH}" in
+			manylinux_2_28_x86_64|manylinux_2_28_aarch64) ;;
+			*) echo "oraclelinux8-gcc11 requires manylinux_2_28 on x86_64 or aarch64" >&2; exit 1;;
+		esac
 		;;
 	*) echo "Unsupported variant: '${MANYLINUX_VARIANT}'" >&2; exit 1;;
 esac

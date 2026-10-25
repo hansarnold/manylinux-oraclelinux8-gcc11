@@ -2,6 +2,11 @@ name: Oracle Linux 8 GCC 11.5
 
 on:
   workflow_dispatch:
+    inputs:
+      test_upstream_runtime:
+        description: Also test the repaired wheel in the upstream manylinux image
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,14 +17,23 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    name: Build and test ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86_64
+            runner: ubuntu-24.04
+          - platform: aarch64
+            runner: ubuntu-24.04-arm
     env:
       POLICY: manylinux_2_28
-      PLATFORM: x86_64
+      PLATFORM: ${{ matrix.platform }}
       MANYLINUX_VARIANT: oraclelinux8-gcc11
       COMMIT_SHA: ${{ github.sha }}
-      MANYLINUX_IMAGE: manylinux_2_28_oraclelinux8_gcc11_x86_64:${{ github.sha }}
+      MANYLINUX_IMAGE: manylinux_2_28_oraclelinux8_gcc11_${{ matrix.platform }}:${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,3 +47,6 @@ jobs:
         run: ./build.sh
       - name: Test repaired wheel in clean AlmaLinux 8
         run: ./tests/test-oraclelinux8-clean.sh "${MANYLINUX_IMAGE}"
+      - name: Test repaired wheel in upstream manylinux
+        if: inputs.test_upstream_runtime
+        run: ./tests/test-oraclelinux8-upstream.sh "${MANYLINUX_IMAGE}"
