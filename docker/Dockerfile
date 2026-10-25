@@ -2,6 +2,7 @@
 ARG BASEIMAGE=amd64/almalinux:9
 ARG POLICY=manylinux_2_34
 ARG PLATFORM=x86_64
+ARG MANYLINUX_VARIANT=
 ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-14/root
 ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst
 ARG PREPEND_PATH=/usr/local/bin:${DEVTOOLSET_ROOTPATH}/usr/bin:
@@ -14,12 +15,14 @@ ARG MANYLINUX_COSIGN_VERSION=3.1.4
 FROM $BASEIMAGE AS runtime_base_packages
 ARG POLICY
 ARG PLATFORM
+ARG MANYLINUX_VARIANT
 ARG DEVTOOLSET_ROOTPATH
 ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
+ENV MANYLINUX_VARIANT=${MANYLINUX_VARIANT}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
 ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}
@@ -37,6 +40,7 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 COPY build_scripts/install-entrypoint.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
+     build_scripts/oraclelinux8-gcc11.sh \
      /opt/_internal/build_scripts/
 
 RUN /opt/_internal/build_scripts/install-entrypoint.sh

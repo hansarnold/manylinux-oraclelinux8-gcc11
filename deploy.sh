@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if [ -n "${MANYLINUX_VARIANT:-}" ]; then
+  echo "Custom variants must be published explicitly to a registry you control." >&2
+  exit 1
+fi
+
 export TZ=UTC0
 
 DRY_RUN=0

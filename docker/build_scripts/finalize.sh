@@ -108,7 +108,9 @@ LC_ALL=C "${MY_DIR}/update-system-packages.sh"
 "${MY_DIR}/install-gcc-wrapper.sh"
 
 # patch libstdc++.so  (see https://github.com/pypa/manylinux/issues/1760)
-if [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_34" ]; then
+if [ "${MANYLINUX_VARIANT:-}" == "oraclelinux8-gcc11" ]; then
+	"${MY_DIR}/oraclelinux8-gcc11.sh" check
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_34" ]; then
 	find "${DEVTOOLSET_ROOTPATH}" -name 'libstdc++.so' -exec sed -i 's/INPUT\s*(\s*\([^ ]\+\)\s*\([^ ]\+\)\s*)/INPUT ( \1 \2 \1 )/g' {} \;
 fi
 

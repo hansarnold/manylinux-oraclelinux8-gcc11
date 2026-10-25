@@ -1,6 +1,17 @@
 #!/bin/bash
 # Helper utilities for build
 
+case "${MANYLINUX_VARIANT:-}" in
+	"") ;;
+	oraclelinux8-gcc11)
+		if [ "${AUDITWHEEL_POLICY}_${AUDITWHEEL_ARCH}" != "manylinux_2_28_x86_64" ]; then
+			echo "oraclelinux8-gcc11 requires manylinux_2_28_x86_64" >&2
+			exit 1
+		fi
+		;;
+	*) echo "Unsupported variant: '${MANYLINUX_VARIANT}'" >&2; exit 1;;
+esac
+
 
 # use all flags used by ubuntu 20.04 for hardening builds, dpkg-buildflags --export
 # other flags mentioned in https://wiki.ubuntu.com/ToolChain/CompilerFlags can't be
@@ -30,6 +41,7 @@ fi
 # shellcheck source=/dev/null
 OS_ID_LIKE=$(. /etc/os-release; echo "${ID} ${ID_LIKE:-}")
 case "${OS_ID_LIKE}" in
+	ol|ol\ *) OS_ID_LIKE=rhel;;
 	*anolis*) OS_ID_LIKE=rhel;;
 	*rhel*) OS_ID_LIKE=rhel;;
 	*debian) OS_ID_LIKE=debian;;

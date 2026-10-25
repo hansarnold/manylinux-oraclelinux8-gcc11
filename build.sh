@@ -10,6 +10,17 @@ fi
 # Export variable needed by 'docker build --build-arg'
 export POLICY
 export PLATFORM
+export MANYLINUX_VARIANT="${MANYLINUX_VARIANT:-}"
+case "${MANYLINUX_VARIANT}" in
+	"") ;;
+	oraclelinux8-gcc11)
+		if [ "${POLICY}_${PLATFORM}" != "manylinux_2_28_x86_64" ]; then
+			echo "oraclelinux8-gcc11 requires POLICY=manylinux_2_28 PLATFORM=x86_64" >&2
+			exit 1
+		fi
+		;;
+	*) echo "Unsupported variant: '${MANYLINUX_VARIANT}'" >&2; exit 1;;
+esac
 
 # get docker default multiarch image prefix for PLATFORM
 case "${PLATFORM}" in
@@ -37,6 +48,10 @@ if [ "${POLICY}" == "manylinux2014" ]; then
 elif [ "${POLICY}" == "manylinux_2_28" ]; then
 	BASEIMAGE="quay.io/almalinuxorg/almalinux:8"
 	DEVTOOLSET_ROOTPATH="/opt/rh/gcc-toolset-14/root"
+	if [ "${MANYLINUX_VARIANT}" == "oraclelinux8-gcc11" ]; then
+		BASEIMAGE="docker.io/library/oraclelinux:8"
+		DEVTOOLSET_ROOTPATH="/opt/rh/gcc-toolset-11/root"
+	fi
 	PREPEND_PATH="${DEVTOOLSET_ROOTPATH}/usr/bin:"
 	LD_LIBRARY_PATH_ARG="${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst"
 elif [ "${POLICY}" == "manylinux_2_31" ]; then
@@ -133,12 +148,19 @@ fi
 export MANYLINUX_DISABLE_CLANG_FOR_CPYTHON
 
 
-MANYLINUX_IMAGE="quay.io/pypa/${POLICY}_${PLATFORM}:${COMMIT_SHA}"
+IMAGE_KEY="${POLICY}_${PLATFORM}"
+if [ "${MANYLINUX_VARIANT}" == "oraclelinux8-gcc11" ]; then
+	IMAGE_KEY="${POLICY}_oraclelinux8_gcc11_${PLATFORM}"
+	MANYLINUX_IMAGE="${MANYLINUX_IMAGE:-${IMAGE_KEY}:${COMMIT_SHA:-local}}"
+else
+	MANYLINUX_IMAGE="${MANYLINUX_IMAGE:-quay.io/pypa/${IMAGE_KEY}:${COMMIT_SHA}}"
+fi
 
 BUILD_ARGS_COMMON=(
 	"--platform=linux/${GOARCH}"
 	"--pull=true"
 	--build-arg POLICY --build-arg PLATFORM --build-arg BASEIMAGE
+	--build-arg MANYLINUX_VARIANT
 	--build-arg DEVTOOLSET_ROOTPATH --build-arg PREPEND_PATH --build-arg LD_LIBRARY_PATH_ARG
 	--build-arg MANYLINUX_BUILDARCH --build-arg MANYLINUX_DISABLE_CLANG --build-arg MANYLINUX_DISABLE_CLANG_FOR_CPYTHON
 	--rm -t "${MANYLINUX_IMAGE}"
@@ -162,16 +184,19 @@ elif [ "${MANYLINUX_BUILD_FRONTEND}" == "podman" ]; then
 	TEST_COMMAND="podman"
 	podman build "${BUILD_ARGS_COMMON[@]}"
 elif [ "${MANYLINUX_BUILD_FRONTEND}" == "docker-buildx" ]; then
-	if [ "${GITHUB_REPOSITORY:-}_${GITHUB_EVENT_NAME:-}_${GITHUB_REF:-}" == "pypa/manylinux_push_refs/heads/main" ]; then
+	CACHE_FROM=("--cache-from=type=local,src=$(pwd)/.buildx-cache-${IMAGE_KEY}")
+	if [ -z "${MANYLINUX_VARIANT}" ]; then
+		CACHE_FROM+=("--cache-from=type=registry,ref=ghcr.io/pypa/manylinux-cache:${IMAGE_KEY}_main")
+	fi
+	if [ -z "${MANYLINUX_VARIANT}" ] && [ "${GITHUB_REPOSITORY:-}_${GITHUB_EVENT_NAME:-}_${GITHUB_REF:-}" == "pypa/manylinux_push_refs/heads/main" ]; then
 		CACHE_STORE="--cache-to=type=registry,ref=ghcr.io/pypa/manylinux-cache:${POLICY}_${PLATFORM}_main,mode=max,compression=zstd,compression-level=22"
 	else
 		USE_LOCAL_CACHE=1
-		CACHE_STORE="--cache-to=type=local,dest=$(pwd)/.buildx-cache-staging-${POLICY}_${PLATFORM},mode=max,compression=zstd,compression-level=22"
+		CACHE_STORE="--cache-to=type=local,dest=$(pwd)/.buildx-cache-staging-${IMAGE_KEY},mode=max,compression=zstd,compression-level=22"
 	fi
 	docker buildx build \
 		--load \
-		"--cache-from=type=registry,ref=ghcr.io/pypa/manylinux-cache:${POLICY}_${PLATFORM}_main" \
-		"--cache-from=type=local,src=$(pwd)/.buildx-cache-${POLICY}_${PLATFORM}" \
+		"${CACHE_FROM[@]}" \
 		"${CACHE_STORE}" \
 		"${BUILD_ARGS_COMMON[@]}"
 else
@@ -179,11 +204,11 @@ else
 	exit 1
 fi
 
-${TEST_COMMAND} run --rm "${MANYLINUX_IMAGE}" /opt/_internal/tests/run_tests.sh
+${TEST_COMMAND} run --rm --platform="linux/${GOARCH}" "${MANYLINUX_IMAGE}" /opt/_internal/tests/run_tests.sh
 
 if [ ${USE_LOCAL_CACHE} -ne 0 ]; then
-	if [ -d "$(pwd)/.buildx-cache-${POLICY}_${PLATFORM}" ]; then
-		rm -rf "$(pwd)/.buildx-cache-${POLICY}_${PLATFORM}"
+	if [ -d "$(pwd)/.buildx-cache-${IMAGE_KEY}" ]; then
+		rm -rf "$(pwd)/.buildx-cache-${IMAGE_KEY}"
 	fi
-	mv "$(pwd)/.buildx-cache-staging-${POLICY}_${PLATFORM}" "$(pwd)/.buildx-cache-${POLICY}_${PLATFORM}"
+	mv "$(pwd)/.buildx-cache-staging-${IMAGE_KEY}" "$(pwd)/.buildx-cache-${IMAGE_KEY}"
 fi

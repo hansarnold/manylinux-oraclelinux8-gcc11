@@ -21,6 +21,9 @@ if [ "${PACKAGE_MANAGER}" == "yum" ]; then
 	fi
 elif [ "${PACKAGE_MANAGER}" == "dnf" ]; then
 	dnf -y upgrade --nobest
+	if [ "${MANYLINUX_VARIANT:-}" == "oraclelinux8-gcc11" ]; then
+		"${MY_DIR}/oraclelinux8-gcc11.sh" check
+	fi
 elif [ "${PACKAGE_MANAGER}" == "apt" ]; then
 	DEBIAN_FRONTEND=noninteractive apt-get update -qq
 	DEBIAN_FRONTEND=noninteractive apt-get upgrade -qq -y

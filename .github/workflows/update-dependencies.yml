@@ -19,6 +19,7 @@ permissions: {}
 
 jobs:
   update-dependencies:
+    if: github.repository == 'pypa/manylinux'
     name: Update dependencies
     permissions:
       contents: write  # needed to create new branch

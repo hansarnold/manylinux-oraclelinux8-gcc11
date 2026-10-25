@@ -1,5 +1,33 @@
-manylinux
-=========
+manylinux-oraclelinux8-gcc11
+============================
+
+This fork of `pypa/manylinux <https://github.com/pypa/manylinux>`_ adds an
+Oracle Linux 8 image with Oracle GCC Toolset 11 (GCC 11.5.0), initially for
+``x86_64``. It preserves the ``manylinux_2_28_x86_64`` wheel policy and the
+upstream Python interpreter layout, development tools, and test suite.
+
+Build and test the variant from the repository root:
+
+.. code-block:: bash
+
+   POLICY=manylinux_2_28 PLATFORM=x86_64 \
+   MANYLINUX_VARIANT=oraclelinux8-gcc11 COMMIT_SHA=local \
+   ./build.sh
+
+The local image is ``manylinux_2_28_oraclelinux8_gcc11_x86_64:local``.
+See the `build and maintenance guide <docs/oraclelinux8-gcc11.md>`_ for
+requirements, wheel-building examples, and RPM pins, and the
+`validation record <docs/oraclelinux8-gcc11-validation.md>`_ for tested behavior.
+The Oracle workflow is manually triggered and does not publish images.
+The upstream image-matrix and dependency-update jobs are restricted to
+``pypa/manylinux``.
+
+Upstream manylinux documentation
+================================
+
+The documentation below describes upstream manylinux. Its PyPA registry image
+references are upstream images; use the local image above for this fork's
+Oracle variant. Leaving ``MANYLINUX_VARIANT`` unset preserves upstream builds.
 
 Older archives: https://groups.google.com/forum/#!forum/manylinux-discuss
 

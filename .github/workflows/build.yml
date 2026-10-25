@@ -34,8 +34,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+      - name: Check variant selection
+        run: python3 tests/test-build-variant.py
 
   build_matrix:
+    if: github.repository == 'pypa/manylinux'
     name: Build matrix
     needs: pre_commit
     runs-on: ubuntu-latest
@@ -114,7 +117,7 @@ jobs:
           QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
 
   all_passed:
-    if: always()
+    if: always() && github.repository == 'pypa/manylinux'
     name: Check all builds passed
     needs: [build_manylinux]
     runs-on: ubuntu-slim

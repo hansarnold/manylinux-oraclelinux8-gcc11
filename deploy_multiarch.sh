@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if [ -n "${MANYLINUX_VARIANT:-}" ]; then
+	echo "Custom variants must be published explicitly to a registry you control." >&2
+	exit 1
+fi
+
 IMAGES=(manylinux2014 manylinux_2_28 manylinux_2_31 manylinux_2_34 manylinux_2_35 manylinux_2_39 musllinux_1_2)
 EXIT_CODE=0
 

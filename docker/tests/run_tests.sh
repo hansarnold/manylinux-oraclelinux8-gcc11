@@ -6,6 +6,10 @@ set -exuo pipefail
 # Get script directory
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 
+if [ "${MANYLINUX_VARIANT:-}" == "oraclelinux8-gcc11" ]; then
+	"${MY_DIR}/oraclelinux8-gcc11.sh"
+fi
+
 # https://github.com/pypa/manylinux/pull/2004
 # check curl does not trust some compromised CA
 URLS_TO_CHECK=(

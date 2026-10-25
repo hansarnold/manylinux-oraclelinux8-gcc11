@@ -61,3 +61,7 @@ docker/sources
 
 # buildx cache
 .buildx-cache-*/
+
+# Local task research, verification logs and artifacts
+/tmp/
+/output/
